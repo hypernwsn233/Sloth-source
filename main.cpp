@@ -1,7 +1,9 @@
 #include <iostream>
 #include "lexer.hpp"
 #include <fstream>
+
 using namespace std;
+
 std::string tokenName(TokenType type) {
     switch(type) {
         case TokenType::IDENTIFIER: return "IDENTIFIER";
@@ -26,11 +28,15 @@ int main(){
     return 1;
   }
   string source((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+
   Lexer lexer(source);
+
   auto tokens = lexer.tokenize();
+  
   for(const auto& token : tokens){
     cout << tokenName(token.type) << ": " << token.value << endl;
   }
+
   file.close();
   return 0;
 }
