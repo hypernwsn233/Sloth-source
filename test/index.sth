@@ -1,0 +1,2 @@
+numero: int = 12;
+sayf("hello world");
