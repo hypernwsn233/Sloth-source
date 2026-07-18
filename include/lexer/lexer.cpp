@@ -1,12 +1,10 @@
-#include "lexer.hpp"
+#include "./lexer.hpp"
 #include <cctype>
 
 Lexer::Lexer(const std::string& source){
   this->source = source;
   this->position = 0;
 };
-
-
 
 std::vector<Token> Lexer::tokenize(){
   std::vector<Token> tokens;
@@ -24,7 +22,11 @@ std::vector<Token> Lexer::tokenize(){
         word += source[position];
         position++;
       }
-      tokens.push_back({TokenType::IDENTIFIER, word});
+      if(word == "int"){
+        tokens.push_back({TokenType::TYPE_INT, word});
+      } else {
+        tokens.push_back({TokenType::IDENTIFIER, word});
+      }
       continue;
     }
 
