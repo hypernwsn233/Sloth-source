@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 
 namespace {
   static std::string escapeString(const std::string &s) {
@@ -32,10 +33,16 @@ CodeGenerator::CodeGenerator(const std::string& filename)
   }
 }
 
+std::string CodeGenerator::labelFor(const std::string& name) const
+{
+  return name;
+}
+
 void CodeGenerator::generate(const Program& program)
 {
   dataSection.clear();
   textSection.clear();
+  variableTypes.clear();
   stringCounter = 0;
 
   // Prelude for text section
@@ -79,6 +86,7 @@ void CodeGenerator::generateVariable(const VariableDeclaration* node)
   if (label.empty()) {
     label = "var_" + std::to_string(++stringCounter);
   }
+  variableTypes[label] = node->type;
 
   if (node->value) {
     if (const auto *num = dynamic_cast<const NumberLiteral*>(node->value.get())) {
@@ -113,47 +121,10 @@ void CodeGenerator::generateVariable(const VariableDeclaration* node)
 
 void CodeGenerator::generateFunctionCall(const FunctionCall* node)
 {
-  // Support a simple built-in: print(x)
-  // Support builtins: print/sayf and scan
   if (node->functionName == "print" || node->functionName == "sayf") {
     if (node->arguments.empty()) return;
-
-    const Expression* arg = node->arguments[0].get();
-
-    // Ensure format strings exist
-    if (!containsLabel(dataSection, "__fmt_int"))
-      dataSection.push_back("__fmt_int: .asciz \"%d\\n\"");
-    if (!containsLabel(dataSection, "__fmt_str"))
-      dataSection.push_back("__fmt_str: .asciz \"%s\\n\"");
-
-    if (const auto *num = dynamic_cast<const NumberLiteral*>(arg)) {
-      std::ostringstream ss;
-      ss << "    movl $" << num->value << ", %esi";
-      textSection.push_back(ss.str());
-      textSection.push_back("    leaq __fmt_int(%rip), %rdi");
-      textSection.push_back("    movl $0, %eax");
-      textSection.push_back("    call printf");
-      return;
-    }
-
-    if (const auto *str = dynamic_cast<const stringLiteral*>(arg)) {
-      std::string lbl = ".LC" + std::to_string(++stringCounter);
-      std::string esc = escapeString(str->value);
-      std::ostringstream ds;
-      ds << lbl << ": .asciz \"" << esc << "\"";
-      dataSection.push_back(ds.str());
-
-      textSection.push_back("    leaq " + lbl + "(%rip), %rdi");
-      textSection.push_back("    call puts");
-      return;
-    }
-
-    if (const auto *ident = dynamic_cast<const Identifer*>(arg)) {
-      // treat identifier as string pointer for sayf/print
-      textSection.push_back("    leaq " + ident->name + "(%rip), %rdi");
-      textSection.push_back("    call puts");
-      return;
-    }
+    emitPrintExpression(node->arguments[0].get());
+    return;
   }
 
   if (node->functionName == "scan") {
@@ -164,11 +135,54 @@ void CodeGenerator::generateFunctionCall(const FunctionCall* node)
       if (!containsLabel(dataSection, "__fmt_int"))
         dataSection.push_back("__fmt_int: .asciz \"%d\"");
       textSection.push_back("    leaq __fmt_int(%rip), %rdi");
-      textSection.push_back("    leaq " + ident->name + "(%rip), %rsi");
+      textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), %rsi");
       textSection.push_back("    movl $0, %eax");
       textSection.push_back("    call scanf");
       return;
     }
+  }
+}
+
+void CodeGenerator::emitPrintExpression(const Expression* expression)
+{
+  if (!containsLabel(dataSection, "__fmt_int")) {
+    dataSection.push_back("__fmt_int: .asciz \"%d\\n\"");
+  }
+
+  if (!containsLabel(dataSection, "__fmt_str")) {
+    dataSection.push_back("__fmt_str: .asciz \"%s\\n\"");
+  }
+
+  if (const auto* number = dynamic_cast<const NumberLiteral*>(expression)) {
+    textSection.push_back("    movl $" + std::to_string(number->value) + ", %esi");
+    textSection.push_back("    leaq __fmt_int(%rip), %rdi");
+    textSection.push_back("    movl $0, %eax");
+    textSection.push_back("    call printf");
+    return;
+  }
+
+  if (const auto* text = dynamic_cast<const stringLiteral*>(expression)) {
+    const std::string label = ".LC" + std::to_string(++stringCounter);
+    std::ostringstream ss;
+    ss << label << ": .asciz \"" << escapeString(text->value) << "\"";
+    dataSection.push_back(ss.str());
+    textSection.push_back("    leaq " + label + "(%rip), %rdi");
+    textSection.push_back("    call puts");
+    return;
+  }
+
+  if (const auto* ident = dynamic_cast<const Identifer*>(expression)) {
+    const auto typeIt = variableTypes.find(ident->name);
+    if (typeIt != variableTypes.end() && typeIt->second == "int") {
+      textSection.push_back("    movl " + labelFor(ident->name) + "(%rip), %esi");
+      textSection.push_back("    leaq __fmt_int(%rip), %rdi");
+      textSection.push_back("    movl $0, %eax");
+      textSection.push_back("    call printf");
+      return;
+    }
+
+    textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), %rdi");
+    textSection.push_back("    call puts");
   }
 }
 
@@ -193,6 +207,9 @@ void CodeGenerator::writeFile()
   for (const auto &line : textSection) {
     output << line << "\n";
   }
+
+  output << "    .extern scanf\n";
+  output << "    .section .note.GNU-stack,\"\",@progbits\n";
 
   output.close();
 }

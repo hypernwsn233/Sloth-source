@@ -35,7 +35,7 @@ int main()
 
     if (!file)
     {
-        std::cerr << "Erro ao abrir test/index.sth" << std::endl;
+        std::cerr << "Erron ao abrir test/index.sth" << std::endl;
         return 1;
     }
 

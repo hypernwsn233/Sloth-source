@@ -88,17 +88,17 @@ std::unique_ptr<Program> Parser::parseProgram()
 {
   auto program = std::make_unique<Program>();
   while (peek().type != TokenType::EOFILE) {
-    // Decide whether it's a variable declaration or a function call
+    
     if (peek().type == TokenType::IDENTIFIER && (position + 1) < tokens.size() && tokens[position + 1].type == TokenType::COLON) {
       auto stmt = parseVariable();
       program->addStatement(std::move(stmt));
     } else if (peek().type == TokenType::IDENTIFIER) {
       auto expr = parseFunctionCall();
-      // expect semicolon after function call
+      
       consume(TokenType::SEMICOLON);
       program->addStatement(std::move(expr));
     } else {
-      // Unexpected token: skip to avoid infinite loop
+      
       advance();
     }
   }
