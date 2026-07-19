@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/unbit.dir/CMakeFiles/3.28.3/CompilerIdCXX/CMakeCXXCompilerId.cpp.o CMakeFiles/unbit.dir/include/compiler/CodeGenerator.cpp.o CMakeFiles/unbit.dir/include/lexer/lexer.cpp.o CMakeFiles/unbit.dir/include/otimizer/AssemblyOptimizer.cpp.o CMakeFiles/unbit.dir/include/parser/parser.cpp.o CMakeFiles/unbit.dir/main.cpp.o -o unbit 

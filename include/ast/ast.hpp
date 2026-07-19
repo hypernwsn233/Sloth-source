@@ -59,6 +59,30 @@ public:
   }
 };
 
+class BooleanLiteral : public Expression
+{
+public:
+  bool value;
+
+  BooleanLiteral(bool value)
+      : value(value)
+  {
+  }
+
+  std::string getType() const override
+  {
+    return "boolean";
+  }
+
+  void sayf(int ident) const override
+  {
+    printIndent(ident);
+    std::cout << "BooleanLiteral: "
+              << (value ? "true" : "false")
+              << std::endl;
+  }
+};
+
 class stringLiteral : public Expression
 {
 public:
@@ -73,6 +97,7 @@ public:
   {
     return "string";
   }
+
 
   void sayf(int ident) const override
   {

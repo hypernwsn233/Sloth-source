@@ -25,7 +25,8 @@ namespace {
   }
 }
 
-CodeGenerator::CodeGenerator(const std::string& filename)
+CodeGenerator::CodeGenerator(const std::string& filename, Target target, int optLevel)
+  : outputPath(filename), target(target), optLevel(optLevel)
 {
   output.open(filename);
   if (!output.is_open()) {
@@ -35,7 +36,8 @@ CodeGenerator::CodeGenerator(const std::string& filename)
 
 std::string CodeGenerator::labelFor(const std::string& name) const
 {
-  return name;
+  // Símbolos de dados também são decorados no Mach-O (macOS).
+  return target.mangle(name);
 }
 
 void CodeGenerator::generate(const Program& program)
@@ -45,22 +47,38 @@ void CodeGenerator::generate(const Program& program)
   variableTypes.clear();
   stringCounter = 0;
 
-  // Prelude for text section
-  textSection.push_back(".globl main");
-  textSection.push_back(".type main, @function");
-  textSection.push_back("main:");
+  // Prelude do bloco .text — entrypoint decorado por SO.
+  const std::string entry = target.entry();
+  textSection.push_back(".globl " + entry);
+  if (target.os() == TargetOS::Linux) {
+    textSection.push_back(".type " + entry + ", @function");
+  }
+  textSection.push_back(entry + ":");
   textSection.push_back("    pushq %rbp");
   textSection.push_back("    movq %rsp, %rbp");
 
-  // Walk AST
+  // Win64 exige 32 bytes de "shadow space" antes de qualquer call; mantemos
+  // a pilha alinhada a 16 bytes reservando esse espaço no prólogo.
+  if (target.shadowSpace() > 0) {
+    textSection.push_back("    subq $" + std::to_string(target.shadowSpace()) + ", %rsp");
+  }
+
+  // Percorre a AST.
   for (const auto& stmt : program.statements) {
     generateNode(stmt.get());
   }
 
-  // Epilogue
+  // Epílogo.
+  if (target.shadowSpace() > 0) {
+    textSection.push_back("    addq $" + std::to_string(target.shadowSpace()) + ", %rsp");
+  }
   textSection.push_back("    movl $0, %eax");
   textSection.push_back("    popq %rbp");
   textSection.push_back("    ret");
+
+  // Otimização peephole sobre a seção .text.
+  AssemblyOptimizer optimizer(optLevel);
+  lastStats = optimizer.optimize(textSection);
 
   writeFile();
 }
@@ -77,16 +95,16 @@ void CodeGenerator::generateNode(const ASTnode* node)
     return;
   }
 
-  // Other node types currently not handled
+  // Outros tipos de nó ainda não tratados.
 }
 
 void CodeGenerator::generateVariable(const VariableDeclaration* node)
 {
-  std::string label = node->name;
-  if (label.empty()) {
-    label = "var_" + std::to_string(++stringCounter);
+  std::string label = labelFor(node->name);
+  if (node->name.empty()) {
+    label = labelFor("var_" + std::to_string(++stringCounter));
   }
-  variableTypes[label] = node->type;
+  variableTypes[node->name] = node->type;
 
   if (node->value) {
     if (const auto *num = dynamic_cast<const NumberLiteral*>(node->value.get())) {
@@ -107,13 +125,25 @@ void CodeGenerator::generateVariable(const VariableDeclaration* node)
       if (!containsLabel(dataSection, label)) dataSection.push_back(ss.str());
       return;
     }
+
+    if (const auto *boolean = dynamic_cast<const BooleanLiteral*>(node->value.get())) {
+      // Um bool ocupa 1 byte: 1 = true, 0 = false.
+      std::ostringstream ss;
+      ss << label << ": .byte " << (boolean->value ? 1 : 0);
+      if (!containsLabel(dataSection, label)) dataSection.push_back(ss.str());
+      return;
+    }
   }
 
-  // no initializer: reserve zero
+  // Sem inicializador: reserva zero, no tamanho apropriado ao tipo.
   std::ostringstream ss;
   if (node->type == "int") {
     ss << label << ": .long 0";
-  } else {
+  }
+  else if (node->type == "bool") {
+    ss << label << ": .byte 0";
+  }
+  else {
     ss << label << ": .quad 0";
   }
   if (!containsLabel(dataSection, label)) dataSection.push_back(ss.str());
@@ -132,84 +162,143 @@ void CodeGenerator::generateFunctionCall(const FunctionCall* node)
     if (node->arguments.empty()) return;
     const Expression* arg = node->arguments[0].get();
     if (const auto *ident = dynamic_cast<const Identifer*>(arg)) {
-      if (!containsLabel(dataSection, "__fmt_int"))
-        dataSection.push_back("__fmt_int: .asciz \"%d\"");
-      textSection.push_back("    leaq __fmt_int(%rip), %rdi");
-      textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), %rsi");
-      textSection.push_back("    movl $0, %eax");
-      textSection.push_back("    call scanf");
+      const std::string fmt = "__fmt_int_scan";
+      if (!containsLabel(dataSection, fmt))
+        dataSection.push_back(fmt + ": .asciz \"%d\"");
+
+      // arg0 = ponteiro para a string de formato; arg1 = endereço da variável.
+      textSection.push_back("    leaq " + fmt + "(%rip), " + target.argReg64(0));
+      textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), " + target.argReg64(1));
+      if (target.variadicNeedsAL())
+        textSection.push_back("    movl $0, %eax");
+      textSection.push_back("    call " + target.mangle("scanf"));
       return;
     }
   }
 }
 
+void CodeGenerator::ensureBoolStrings()
+{
+  if (!containsLabel(dataSection, "__bool_true"))
+    dataSection.push_back("__bool_true: .asciz \"true\"");
+  if (!containsLabel(dataSection, "__bool_false"))
+    dataSection.push_back("__bool_false: .asciz \"false\"");
+}
+
 void CodeGenerator::emitPrintExpression(const Expression* expression)
 {
-  if (!containsLabel(dataSection, "__fmt_int")) {
-    dataSection.push_back("__fmt_int: .asciz \"%d\\n\"");
-  }
-
-  if (!containsLabel(dataSection, "__fmt_str")) {
-    dataSection.push_back("__fmt_str: .asciz \"%s\\n\"");
+  const std::string fmt = "__fmt_int_print";
+  if (!containsLabel(dataSection, fmt)) {
+    dataSection.push_back(fmt + ": .asciz \"%d\\n\"");
   }
 
   if (const auto* number = dynamic_cast<const NumberLiteral*>(expression)) {
-    textSection.push_back("    movl $" + std::to_string(number->value) + ", %esi");
-    textSection.push_back("    leaq __fmt_int(%rip), %rdi");
-    textSection.push_back("    movl $0, %eax");
-    textSection.push_back("    call printf");
+    // arg1 (valor) em 32 bits, arg0 (formato) como ponteiro.
+    textSection.push_back("    movl $" + std::to_string(number->value) + ", " + target.argReg32(1));
+    textSection.push_back("    leaq " + fmt + "(%rip), " + target.argReg64(0));
+    if (target.variadicNeedsAL())
+      textSection.push_back("    movl $0, %eax");
+    textSection.push_back("    call " + target.mangle("printf"));
     return;
   }
-
+  
   if (const auto* text = dynamic_cast<const stringLiteral*>(expression)) {
     const std::string label = ".LC" + std::to_string(++stringCounter);
     std::ostringstream ss;
     ss << label << ": .asciz \"" << escapeString(text->value) << "\"";
     dataSection.push_back(ss.str());
-    textSection.push_back("    leaq " + label + "(%rip), %rdi");
-    textSection.push_back("    call puts");
+    textSection.push_back("    leaq " + label + "(%rip), " + target.argReg64(0));
+    textSection.push_back("    call " + target.mangle("puts"));
+    return;
+  }
+
+  if (const auto* boolean = dynamic_cast<const BooleanLiteral*>(expression)) {
+    // Um literal booleano tem valor conhecido em tempo de compilacao:
+    // imprimimos direto a string "true" ou "false".
+    ensureBoolStrings();
+    const std::string label = boolean->value ? "__bool_true" : "__bool_false";
+    textSection.push_back("    leaq " + label + "(%rip), " + target.argReg64(0));
+    textSection.push_back("    call " + target.mangle("puts"));
     return;
   }
 
   if (const auto* ident = dynamic_cast<const Identifer*>(expression)) {
     const auto typeIt = variableTypes.find(ident->name);
     if (typeIt != variableTypes.end() && typeIt->second == "int") {
-      textSection.push_back("    movl " + labelFor(ident->name) + "(%rip), %esi");
-      textSection.push_back("    leaq __fmt_int(%rip), %rdi");
-      textSection.push_back("    movl $0, %eax");
-      textSection.push_back("    call printf");
+      textSection.push_back("    movl " + labelFor(ident->name) + "(%rip), " + target.argReg32(1));
+      textSection.push_back("    leaq " + fmt + "(%rip), " + target.argReg64(0));
+      if (target.variadicNeedsAL())
+        textSection.push_back("    movl $0, %eax");
+      textSection.push_back("    call " + target.mangle("printf"));
       return;
     }
 
-    textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), %rdi");
-    textSection.push_back("    call puts");
+    if (typeIt != variableTypes.end() && typeIt->second == "bool") {
+      // Valor so conhecido em runtime: seleciona "true"/"false" com cmov.
+      // Le o byte do bool, escolhe o ponteiro da string e chama puts.
+      ensureBoolStrings();
+      textSection.push_back("    movzbl " + labelFor(ident->name) + "(%rip), %eax");
+      textSection.push_back("    leaq __bool_false(%rip), %r10");
+      textSection.push_back("    leaq __bool_true(%rip), %r11");
+      textSection.push_back("    testl %eax, %eax");
+      textSection.push_back("    cmovne %r11, %r10");
+      textSection.push_back("    movq %r10, " + target.argReg64(0));
+      textSection.push_back("    call " + target.mangle("puts"));
+      return;
+    }
+
+    textSection.push_back("    leaq " + labelFor(ident->name) + "(%rip), " + target.argReg64(0));
+    textSection.push_back("    call " + target.mangle("puts"));
   }
+}
+
+void CodeGenerator::assemble(std::vector<std::string>& out) const
+{
+  out.clear();
+
+  // Cabeçalho informativo.
+  out.push_back("# ============================================================");
+  out.push_back("# Gerado pelo compilador Unbit");
+  out.push_back("# Alvo: " + target.name());
+  out.push_back("# ============================================================");
+  out.push_back("");
+
+  // Seção de dados.
+  if (!dataSection.empty()) {
+    out.push_back(target.dataSectionDirective());
+    for (const auto &line : dataSection) out.push_back(line);
+    out.push_back("");
+  }
+
+  // Declarações externas (com decoração de símbolo por SO).
+  out.push_back("    .extern " + target.mangle("printf"));
+  out.push_back("    .extern " + target.mangle("puts"));
+  out.push_back("    .extern " + target.mangle("scanf"));
+  out.push_back("");
+
+  // Seção de código.
+  out.push_back(target.textSectionDirective());
+  for (const auto &line : textSection) out.push_back(line);
+
+  // Nota de pilha não-executável (apenas ELF/Linux).
+  if (target.emitGNUStackNote()) {
+    out.push_back("    .section .note.GNU-stack,\"\",@progbits");
+  }
+}
+
+std::string CodeGenerator::assemblyText() const
+{
+  std::vector<std::string> lines;
+  assemble(lines);
+  std::ostringstream ss;
+  for (const auto& l : lines) ss << l << "\n";
+  return ss.str();
 }
 
 void CodeGenerator::writeFile()
 {
-  // Write data section
-  if (!dataSection.empty()) {
-    output << "    .section .data\n";
-    for (const auto &line : dataSection) {
-      output << line << "\n";
-    }
-    output << "\n";
-  }
-
-  // Extern declarations
-  output << "    .extern printf\n";
-  output << "    .extern puts\n";
-  output << "\n";
-
-  // Write text section
-  output << "    .section .text\n";
-  for (const auto &line : textSection) {
-    output << line << "\n";
-  }
-
-  output << "    .extern scanf\n";
-  output << "    .section .note.GNU-stack,\"\",@progbits\n";
-
+  std::vector<std::string> lines;
+  assemble(lines);
+  for (const auto& l : lines) output << l << "\n";
   output.close();
 }

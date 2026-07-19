@@ -1,0 +1,3 @@
+/home/pedro/Documentos/Unbit/build/CMakeFiles/unbit.dir
+/home/pedro/Documentos/Unbit/build/CMakeFiles/edit_cache.dir
+/home/pedro/Documentos/Unbit/build/CMakeFiles/rebuild_cache.dir

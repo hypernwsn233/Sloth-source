@@ -1,3 +1,13 @@
-numero: int = 12;
+idade: int = 42;
+nome: string = "Unbit io";
+realmadri: auto = "cu";
+realmadri2: bool = true;
 
-sayf(numero);
+sayf(realmadri);
+sayf(realmadri2);
+sayf(nome);
+sayf(idade);
+
+if idade == 42 {
+  sayf("É ENGUAL")
+}
