@@ -1,0 +1,6 @@
+# Ignora o arquivo cmkfile.txt
+CMakeLists.txt
+
+# Opcional: ignora também variações do mesmo arquivo
+# cmkfile*.txt
+# *cmkfile.txt
