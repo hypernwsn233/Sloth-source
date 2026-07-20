@@ -63,9 +63,15 @@ public:
         }
         else if (node->type == "bool" && node->value)
         {
-            if (!dynamic_cast<BooleanLiteral *>(node->value.get()))
+            std::cout << "Tipo declarado: " << node->type << '\n';
+            std::cout << "Tipo da expressão: " << node->value->getType() << '\n';
+            if (node->value->getType() != "bool")
             {
-                std::cerr << "Semantic error: variable '" << node->name << "' declared as bool but initializer is not a boolean (true/false)" << std::endl;
+                std::cerr
+                    << "Semantic error: variable '"
+                    << node->name
+                    << "' declared as bool but initializer is not bool\n";
+
                 ++errorCount;
             }
         }
@@ -83,12 +89,22 @@ public:
                 return;
             }
             auto &arg = node->arguments[0];
-            if (dynamic_cast<NumberLiteral *>(arg.get()))
+            std::cout << typeid(*arg).name() << std::endl;
+
+            std::string type = arg->getType();
+
+            if (type == "number")
                 return;
-            if (dynamic_cast<stringLiteral *>(arg.get()))
+
+            if (type == "string")
                 return;
-            if (dynamic_cast<BooleanLiteral *>(arg.get()))
+
+            if (type == "boolean")
                 return;
+
+            if (dynamic_cast<BinaryExpression *>(arg.get()))
+                return;
+
             if (auto id = dynamic_cast<Identifer *>(arg.get()))
             {
                 if (symbolTable.find(id->name) == symbolTable.end())

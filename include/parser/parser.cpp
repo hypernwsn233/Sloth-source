@@ -10,12 +10,12 @@ Parser::Parser(std::vector<Token> tokens)
 
 // --- Navegação pelos tokens -------------------------------------------------
 
-const Token& Parser::peek() const
+const Token &Parser::peek() const
 {
     return tokens[position];
 }
 
-const Token& Parser::peekAt(size_t offset) const
+const Token &Parser::peekAt(size_t offset) const
 {
     size_t index = position + offset;
     if (index >= tokens.size())
@@ -35,7 +35,8 @@ bool Parser::atEnd() const
 
 void Parser::advance()
 {
-    if (!atEnd()) position++;
+    if (!atEnd())
+        position++;
 }
 
 Token Parser::consume(TokenType expected)
@@ -52,9 +53,9 @@ Token Parser::consume(TokenType expected)
           " ('" + peek().value + "')");
 }
 
-void Parser::error(const std::string& message) const
+void Parser::error(const std::string &message) const
 {
-    const Token& t = peek();
+    const Token &t = peek();
     std::cerr << "Erro de sintaxe (linha " << t.line << ", coluna " << t.column
               << "): " << message << std::endl;
     std::exit(1);
@@ -92,7 +93,8 @@ std::unique_ptr<ASTnode> Parser::parseStatement()
     }
 
     error("esperava uma declaracao de variavel ou chamada de funcao, "
-          "mas encontrei " + tokenTypeName(peek().type) +
+          "mas encontrei " +
+          tokenTypeName(peek().type) +
           " ('" + peek().value + "')");
 }
 
@@ -114,11 +116,11 @@ std::unique_ptr<ASTnode> Parser::parseVariable()
     std::string resolvedType = type.value;
     if (resolvedType == "auto")
     {
-        if (dynamic_cast<NumberLiteral*>(value.get()))
+        if (dynamic_cast<NumberLiteral *>(value.get()))
             resolvedType = "int";
-        else if (dynamic_cast<stringLiteral*>(value.get()))
+        else if (dynamic_cast<stringLiteral *>(value.get()))
             resolvedType = "string";
-        else if (dynamic_cast<BooleanLiteral*>(value.get()))
+        else if (dynamic_cast<BooleanLiteral *>(value.get()))
             resolvedType = "bool";
     }
 
@@ -149,7 +151,7 @@ std::unique_ptr<Expression> Parser::parseFunctionCall()
 }
 
 // expressao ::= NUMBER | STRING | IDENTIFIER | chamada
-std::unique_ptr<Expression> Parser::parseExpression()
+std::unique_ptr<Expression> Parser::parsePrimary()
 {
     if (check(TokenType::NUMBER))
     {
@@ -163,7 +165,7 @@ std::unique_ptr<Expression> Parser::parseExpression()
         return std::make_unique<stringLiteral>(s.value);
     }
 
-    if(check(TokenType::BOOLEAN))
+    if (check(TokenType::BOOLEAN))
     {
         Token b = consume(TokenType::BOOLEAN);
         bool value = (b.value == "true");
@@ -182,4 +184,27 @@ std::unique_ptr<Expression> Parser::parseExpression()
 
     error("expressao invalida: token inesperado " +
           tokenTypeName(peek().type) + " ('" + peek().value + "')");
+}
+
+std::unique_ptr<Expression> Parser::parseExpression()
+{
+    auto left = parsePrimary();
+
+    if (check(TokenType::GREATER) ||
+        check(TokenType::LESS) ||
+        check(TokenType::EQUAL_EQUAL) ||
+        check(TokenType::NOT_EQUAL))
+    {
+        TokenType op = peek().type;
+        advance();
+
+        auto right = parsePrimary();
+
+        return std::make_unique<BinaryExpression>(
+            std::move(left),
+            op,
+            std::move(right));
+    }
+
+    return left;
 }

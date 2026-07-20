@@ -7,23 +7,43 @@ std::string tokenTypeName(TokenType type)
 {
     switch (type)
     {
-        case TokenType::IDENTIFIER:  return "IDENTIFIER";
-        case TokenType::COLON:       return "COLON";
-        case TokenType::SEMICOLON:   return "SEMICOLON";
-        case TokenType::COMMA:       return "COMMA";
-        case TokenType::TYPE_VALUE:  return "TYPE_VALUE";
-        case TokenType::ASSIGN:      return "ASSIGN";
-        case TokenType::NUMBER:      return "NUMBER";
-        case TokenType::STRING:      return "STRING";
-        case TokenType::LEFT_PAREN:  return "LEFT_PAREN";
-        case TokenType::RIGHT_PAREN: return "RIGHT_PAREN";
-        case TokenType::EOFILE:      return "EOFILE";
-        case TokenType::UNKNOWN:     return "UNKNOWN";
+    case TokenType::IDENTIFIER:
+        return "IDENTIFIER";
+    case TokenType::COLON:
+        return "COLON";
+    case TokenType::SEMICOLON:
+        return "SEMICOLON";
+    case TokenType::COMMA:
+        return "COMMA";
+    case TokenType::TYPE_VALUE:
+        return "TYPE_VALUE";
+    case TokenType::ASSIGN:
+        return "ASSIGN";
+    case TokenType::NUMBER:
+        return "NUMBER";
+    case TokenType::STRING:
+        return "STRING";
+    case TokenType::LEFT_PAREN:
+        return "LEFT_PAREN";
+    case TokenType::RIGHT_PAREN:
+        return "RIGHT_PAREN";
+    case TokenType::EOFILE:
+        return "EOFILE";
+    case TokenType::UNKNOWN:
+        return "UNKNOWN";
+    case TokenType::GREATER:
+        return "GREATER";
+    case TokenType::LESS:
+        return "LESS";
+    case TokenType::EQUAL_EQUAL:
+        return "EQUAL_EQUAL";
+    case TokenType::NOT_EQUAL:
+        return "NOT_EQUAL";
     }
     return "UNKNOWN";
 }
 
-Lexer::Lexer(const std::string& source)
+Lexer::Lexer(const std::string &source)
     : source(source)
 {
 }
@@ -47,7 +67,8 @@ char Lexer::peekNext() const
 
 void Lexer::advance()
 {
-    if (atEnd()) return;
+    if (atEnd())
+        return;
 
     if (source[position] == '\n')
     {
@@ -68,7 +89,7 @@ void Lexer::advance()
 Token Lexer::readWord()
 {
     const int startLine = line;
-    const int startCol  = column;
+    const int startCol = column;
 
     std::string word;
     while (!atEnd() && (std::isalnum(current()) || current() == '_'))
@@ -92,7 +113,7 @@ Token Lexer::readWord()
 Token Lexer::readNumber()
 {
     const int startLine = line;
-    const int startCol  = column;
+    const int startCol = column;
 
     std::string number;
     while (!atEnd() && std::isdigit(current()))
@@ -108,7 +129,7 @@ Token Lexer::readNumber()
 Token Lexer::readString()
 {
     const int startLine = line;
-    const int startCol  = column;
+    const int startCol = column;
 
     advance(); // consome a aspa de abertura
 
@@ -120,11 +141,21 @@ Token Lexer::readString()
             advance(); // consome a '\'
             switch (current())
             {
-                case 'n': text += '\n'; break;
-                case 't': text += '\t'; break;
-                case '"': text += '"';  break;
-                case '\\': text += '\\'; break;
-                default:  text += current(); break;
+            case 'n':
+                text += '\n';
+                break;
+            case 't':
+                text += '\t';
+                break;
+            case '"':
+                text += '"';
+                break;
+            case '\\':
+                text += '\\';
+                break;
+            default:
+                text += current();
+                break;
             }
             advance();
         }
@@ -180,18 +211,44 @@ std::vector<Token> Lexer::tokenize()
 
         // Símbolos de um caractere.
         const int startLine = line;
-        const int startCol  = column;
+        const int startCol = column;
         TokenType type = TokenType::UNKNOWN;
 
         switch (c)
         {
-            case ':': type = TokenType::COLON;       break;
-            case ';': type = TokenType::SEMICOLON;   break;
-            case ',': type = TokenType::COMMA;       break;
-            case '=': type = TokenType::ASSIGN;      break;
-            case '(': type = TokenType::LEFT_PAREN;  break;
-            case ')': type = TokenType::RIGHT_PAREN; break;
-            default:  type = TokenType::UNKNOWN;     break;
+        case ':':
+            type = TokenType::COLON;
+            break;
+        case ';':
+            type = TokenType::SEMICOLON;
+            break;
+        case ',':
+            type = TokenType::COMMA;
+            break;
+        case '=':
+            if (peekNext() == '=')
+            {
+                tokens.push_back({TokenType::EQUAL_EQUAL,
+                                  "==",
+                                  startLine,
+                                  startCol});
+
+                advance();
+                advance();
+                continue;
+            }
+
+            type = TokenType::ASSIGN;
+            break;
+        case '(':
+            type = TokenType::LEFT_PAREN;
+            break;
+        case ')':
+            type = TokenType::RIGHT_PAREN;
+            break;
+        default:
+            type = TokenType::UNKNOWN;
+            break;
         }
 
         tokens.push_back({type, std::string(1, c), startLine, startCol});
