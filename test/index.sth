@@ -1,13 +1,3 @@
-idade: int = 42;
-nome: string = "Unbit io";
-realmadri: auto = "cu";
-realmadri2: bool = true;
+expression: bool = 10 == 10;
 
-sayf(realmadri);
-sayf(realmadri2);
-sayf(nome);
-sayf(idade);
-
-if idade == 42 {
-  sayf("É ENGUAL")
-}
+sayf(expression);

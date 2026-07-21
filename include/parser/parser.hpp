@@ -31,22 +31,24 @@ public:
 
 private:
     std::vector<Token> tokens;
-    size_t             position = 0;
+    size_t position = 0;
 
     // --- Navegação pelos tokens ---
-    const Token& peek() const;                 // token atual
-    const Token& peekAt(size_t offset) const;  // token à frente
-    bool         check(TokenType type) const;  // o token atual é deste tipo?
-    bool         atEnd() const;
-    void         advance();
-    Token        consume(TokenType expected);  // exige um tipo; erro se não bater
+    const Token &peek() const;                // token atual
+    const Token &peekAt(size_t offset) const; // token à frente
+    bool check(TokenType type) const;         // o token atual é deste tipo?
+    bool atEnd() const;
+    void advance();
+    Token consume(TokenType expected); // exige um tipo; erro se não bater
 
     // --- Regras da gramática ---
-    std::unique_ptr<ASTnode>    parseStatement();
-    std::unique_ptr<ASTnode>    parseVariable();
+    std::unique_ptr<ASTnode> parseStatement();
+    std::unique_ptr<ASTnode> parseVariable();
     std::unique_ptr<Expression> parseFunctionCall();
     std::unique_ptr<Expression> parseExpression();
+    std::unique_ptr<Expression> parseComparison();
+    std::unique_ptr<Expression> parsePrimary();
 
     // Reporta um erro de sintaxe com linha/coluna e encerra o programa.
-    [[noreturn]] void error(const std::string& message) const;
+    [[noreturn]] void error(const std::string &message) const;
 };

@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "../lexer/lexer.hpp"
 
 // Classe pra todos os NOS do A/DST(DOENÇAS CATASTROFICAS)
 
@@ -71,7 +72,7 @@ public:
 
   std::string getType() const override
   {
-    return "boolean";
+    return "bool";
   }
 
   void sayf(int ident) const override
@@ -97,7 +98,6 @@ public:
   {
     return "string";
   }
-
 
   void sayf(int ident) const override
   {
@@ -208,5 +208,41 @@ public:
 
     for (const auto &stmt : statements)
       stmt->sayf(indent + 1);
+  }
+};
+
+class BinaryExpression : public Expression
+{
+public:
+  std::unique_ptr<Expression> left;
+  TokenType op;
+  std::unique_ptr<Expression> right;
+
+  BinaryExpression(
+      std::unique_ptr<Expression> left,
+      TokenType op,
+      std::unique_ptr<Expression> right)
+      : left(std::move(left)),
+        op(op),
+        right(std::move(right))
+  {
+  }
+
+  std::string getType() const override
+  {
+    return "bool";
+  }
+
+  void sayf(int ident) const override
+  {
+    printIndent(ident);
+    std::cout << "BinaryExpression\n";
+
+    left->sayf(ident + 1);
+
+    printIndent(ident + 1);
+    std::cout << tokenTypeName(op) << "\n";
+
+    right->sayf(ident + 1);
   }
 };
