@@ -1,6 +1,11 @@
-# Ignora o arquivo cmkfile.txt
-CMakeLists.txt
+# Diretorio de build do CMake
+build/
 
-# Opcional: ignora também variações do mesmo arquivo
-# cmkfile*.txt
-# *cmkfile.txt
+# Assembly intermediario e executaveis gerados
+out.s
+out_exec
+out_exec.*
+
+# Binarios do proprio compilador
+/compiler
+/unbit
